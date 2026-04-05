@@ -11,7 +11,7 @@ app.use(cors({ origin: "*" }));
 
 
 const BOT_TOKEN     = (process.env.BOT_TOKEN     || "8348466548:AAGR3Jss48lkie_jgqNAguABE5mNMjom0dU").trim();
-const GROUP_CHAT_ID = (process.env.GROUP_CHAT_ID  || "-5200207290").trim();
+const GROUP_CHAT_ID = (process.env.GROUP_CHAT_ID  || "-5278623594").trim();
 
 const DEFAULT_PORT = 38471;
 const PORT     = parseInt(process.env.PORT || String(DEFAULT_PORT), 10);
